@@ -4,6 +4,10 @@
 Esta documentação fornece instruções para configurar e rodar a API desenvolvida em Go. A API é uma aplicação simples que se conecta a um banco de dados MariaDB e oferece endpoints para manipulação de dados.
 Pré-requisitos
 
+Bibliotecas utilizadas:
+https://echo.labstack.com/
+https://gorm.io/
+
 Antes de iniciar, você precisará ter os seguintes componentes instalados em seu ambiente:
 
     Go: Certifique-se de ter a versão mais recente instalada.
@@ -16,8 +20,6 @@ Configuração do Ambiente
 
 Clone o repositório da API para sua máquina local:
 
-bash
-
 git clone git@github.com:wellminozzo/desafio-be-fr.git
 cd desafio-be-fr
 
@@ -25,13 +27,12 @@ cd desafio-be-fr
 
 Execute o comando para construir os containers:
 
-bash
-
 docker-compose build
 
 Após a build, verifique se os containers estão rodando:
 
-bash
+e rodar um docker-compose exec go mod tidy
+ou um go mod tidy caso a build do docker não tenha ja feito o download das bibliotecas utilizadas
 
 docker-compose ps
 
