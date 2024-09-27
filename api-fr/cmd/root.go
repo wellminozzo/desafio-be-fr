@@ -20,6 +20,7 @@ var rootCmd = &cobra.Command{
 func init() {
 
 	rootCmd.AddCommand(MigrateCmd)
+	rootCmd.AddCommand(MetricsCmd)
 
 }
 

@@ -25,12 +25,12 @@ func InitDB() (*gorm.DB, error) {
 	//gormDB.Model(&Dispatcher{}).Where("active = ?", true).Update("id", "1")
 	//gormDB.Model(&Carrier{}).Where("active = ?", true).Update("id", "1")
 
-	err = gormDB.Migrator().DropTable(&Dispatcher{}, &Carrier{}, &Offer{}, &Weights{}, &DeliveryTime{})
-	if err != nil {
-		log.Fatal("Erro ao remover tabelas:", err)
-	}
+	// err = gormDB.Migrator().DropTable(&Dispatcher{}, &Carrier{}, &Offer{}, &Weights{}, &DeliveryTime{})
+	// if err != nil {
+	// 	log.Fatal("Erro ao remover tabelas:", err)
+	// }
 
-	err = gormDB.AutoMigrate(&Dispatcher{}, &Carrier{}, &Offer{}, &Weights{}, &DeliveryTime{})
+	err = gormDB.AutoMigrate(&Quote{}, &Dispatcher{}, &Carrier{}, &Offer{}, &Weights{}, &DeliveryTime{})
 	if err != nil {
 		log.Fatal("Erro ao criar tabelas:", err)
 	}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -23,16 +22,14 @@ func HandlerStatusJson(c echo.Context) error {
 }
 
 func consumeAPI(requestData APIRequest) (*http.Response, error) {
-	// URL da API externa para obter a cotação
+
 	url := "https://sp.freterapido.com/api/v3/quote/simulate"
 
-	// Converte os dados da requisição para JSON
 	requestBody, err := json.Marshal(requestData)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao converter os dados para JSON: %v", err)
 	}
 
-	// Cria a requisição HTTP
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar a requisição: %v", err)
@@ -40,42 +37,34 @@ func consumeAPI(requestData APIRequest) (*http.Response, error) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// Envia a requisição
 	client := &http.Client{}
 	return client.Do(req)
 }
 
 func handleQuote(c echo.Context) error {
-	// Defina os dados obrigatórios (aqui você pode coletar os dados do corpo da requisição ou definir manualmente)
+
 	var requestData APIRequest
 	if err := c.Bind(&requestData); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Dados de entrada inválidos"})
 	}
 
-	// Consome a API externa
 	resp, err := consumeAPI(requestData)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 	defer resp.Body.Close()
 
-	// Lê a resposta da API
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao ler a resposta"})
 	}
 
 	var responseBody map[string]interface{}
-
-	err = json.Unmarshal(body, &responseBody)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"error": err,
-		}).Debug("Error to unmarshal")
+	if err := json.Unmarshal(body, &responseBody); err != nil {
+		logrus.WithFields(logrus.Fields{"error": err}).Debug("Erro ao deserializar resposta")
 		return err
 	}
 
-	//log.Println("responseBody>>>>>>>>>>>>>>>>>>>>>>", responseBody)
 	db, err = models.InitDB()
 	if err != nil {
 		logrus.Error("Conexão com o banco de dados não foi estabelecida>>>> ", err)
@@ -83,55 +72,69 @@ func handleQuote(c echo.Context) error {
 	}
 
 	for _, dispatcherData := range responseBody["dispatchers"].([]interface{}) {
-		dispatcherMap := dispatcherData.(map[string]interface{})
-
-		fmt.Println("dispatcherMap>>>>>>>>>>>>>>>>>>>>>>", dispatcherMap)
-
-		// Cria o Dispatcher
-		dispatcher := models.Dispatcher{
-			RequestID:                  dispatcherMap["request_id"].(string),
-			RegisteredNumberDispatcher: dispatcherMap["registered_number_dispatcher"].(string),
-			RegisteredNumberShipper:    dispatcherMap["registered_number_shipper"].(string),
-			ZipcodeOrigin:              int64(dispatcherMap["zipcode_origin"].(float64)),
+		dispatcherMap, ok := dispatcherData.(map[string]interface{})
+		if !ok {
+			logrus.Error("Erro ao converter dispatcherData")
+			continue
 		}
 
-		// Salva o Dispatcher no banco de dados
-		if err := db.Create(&dispatcher).Error; err != nil {
-			logrus.Errorf("Erro ao salvar o Dispatcher: %v", err)
-			return err
-		}
-
-		//var carrier models.Carrier
-
-		// Processa as Offers dentro do Dispatcher
 		for _, offerData := range dispatcherMap["offers"].([]interface{}) {
-			offerMap := offerData.(map[string]interface{})
-
-			fmt.Println("offerMap>>>>>>>>>>>>>>>>>>>>>>", offerMap)
-
-			// Cria uma nova Offer
-			offer := models.Offer{
-
-				DispatcherID: dispatcher.ID, // Associa o DispatcherID
-				//CarrierID:    carrier.ID,    // Não esqueça de atribuir CarrierID
-				FinalPrice:   offerMap["final_price"].(float64),
-				CostPrice:    offerMap["cost_price"].(float64),
-				Expiration:   offerMap["expiration"].(string),
-				Service:      offerMap["service"].(string),
-				HomeDelivery: offerMap["home_delivery"].(bool),
-				Modal:        offerMap["modal"].(string),
-				//CompanyName:  offerMap["company_name"].(string),
+			offerMap, ok := offerData.(map[string]interface{})
+			if !ok {
+				logrus.Error("Erro ao converter offerData")
+				continue
 			}
 
-			if err := db.Create(&offer).Error; err != nil {
-				logrus.Errorf("Erro ao salvar a Offer: %v", err)
-				return err
+			carrierMap, ok := offerMap["carrier"].(map[string]interface{})
+			if !ok {
+				logrus.Error("Erro ao converter carrierData")
+				continue
 			}
 
+			companyName, ok := carrierMap["company_name"].(string)
+			if !ok {
+				logrus.Error("company_name está ausente ou não é uma string")
+				continue
+			}
+
+			finalPrice, ok := offerMap["final_price"].(float64)
+			if !ok {
+				logrus.Error("final_price está ausente ou não é um float64")
+				continue
+			}
+
+			service, ok := offerMap["service"].(string)
+			if !ok {
+				logrus.Error("service está ausente ou não é uma string")
+				continue
+			}
+
+			deadlineMap, ok := offerMap["delivery_time"].(map[string]interface{})
+			if !ok || deadlineMap["estimated_date"] == nil {
+				logrus.Error("delivery_time ou estimated_date está ausente")
+				continue
+			}
+
+			deadline, ok := deadlineMap["estimated_date"].(string)
+			if !ok {
+				logrus.Error("estimated_date não é uma string")
+				continue
+			}
+
+			quote := models.Quote{
+				Name:     companyName,
+				Price:    fmt.Sprintf("%.2f", finalPrice),
+				Service:  service,
+				Deadline: deadline,
+			}
+
+			if err := db.Create(&quote).Error; err != nil {
+				logrus.Errorf("Erro ao salvar a cotação: %v", err)
+				continue
+			}
 		}
 	}
 
-	// Retorna a resposta da API externa para o cliente
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"response": responseBody,
 	})
@@ -141,10 +144,10 @@ func GetMetrics(c echo.Context) error {
 
 	lastQuotes := c.QueryParam("last_quotes")
 
-	var results []models.Offer
-	log.Println("lastQuotes>>>>>>>>>>>>>>>>>>>>>>", lastQuotes)
-	if err := db.Table("offers").
-		Order("created_at DESC").
+	var results []models.Quote
+
+	if err := db.Table("quotes").
+		Order("id DESC").
 		Limit(atoi(lastQuotes)).
 		Find(&results).Error; err != nil {
 		logrus.Errorf("Erro ao obter últimas cotações: %v", err)
@@ -155,10 +158,45 @@ func GetMetrics(c echo.Context) error {
 
 }
 
+func GetMetricsByCarrier(c echo.Context) error {
+
+	var stats []models.CompanyMetric
+
+	if err := db.Table("quotes").
+		Select("name, COUNT(*) as quotes_count, SUM(price) as total_price, AVG(price) as avg_price").
+		Group("name").
+		Find(&stats).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao obter dados"})
+	}
+
+	return c.JSON(http.StatusOK, stats)
+
+}
+
+func GetCheaperQuote(c echo.Context) error {
+	cheaperQuote, err := models.GetCheaperQuote(db)
+	if err != nil {
+		logrus.Errorf("Erro ao obter cotação mais barata: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao obter dados"})
+	}
+
+	return c.JSON(http.StatusOK, cheaperQuote)
+}
+
+func GetExpensiveQuote(c echo.Context) error {
+	expensiveQuote, err := models.GetExpensiveQuote(db)
+	if err != nil {
+		logrus.Errorf("Erro ao obter cotação mais cara: %v", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Erro ao obter dados"})
+	}
+
+	return c.JSON(http.StatusOK, expensiveQuote)
+}
+
 func atoi(str string) int {
 	num, err := strconv.Atoi(str)
 	if err != nil {
-		return 0 // Retorna 0 se houver erro na conversão
+		return 0
 	}
 	return num
 }
