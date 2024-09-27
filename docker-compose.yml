@@ -1,0 +1,40 @@
+---
+version: '3'
+services:
+  api-fr:
+    build:
+      target: dev
+      context: ./api-fr
+      dockerfile: Dockerfile-dev
+    volumes:
+      - "./api-fr:/app"
+      - "./.data/go/pkg:/go/pkg/"
+       
+    ports:
+      - '9090:9090'
+    environment:
+      PORT: '9090'
+      LOG_LV: verbose
+      GO_ENV: development
+      LOG_QUERY: "1"
+      PROTOCOL: http
+      DOMAIN: localhost:9090
+      
+      DB_ENGINE: "mysql"
+      DB_URI: "root:project@(database)/project"
+      
+    depends_on:
+      - database
+
+  database:
+    ports:
+      - "9091:3306"
+    image: mariadb
+    restart: always
+    volumes:
+      - "./.data/mariadb:/var/lib/mysql"
+    environment:
+      MARIADB_ROOT_PASSWORD: project
+      MARIADB_DATABASE: project
+      MARIADB_USER: project
+      MARIADB_PASSWORD: project
